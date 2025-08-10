@@ -22,9 +22,10 @@ const PORT = process.env.PORT || 3001;
 // ✅ CORS autorisé pour Railway Front + localhost et ton site Vercel
 const allowedOrigins = [
    'https://daff-backend-production.up.railway.app',
-   'https://daff-telecom.vercel.app/', // 💡 C'est la ligne ajoutée !
-  'http://localhost:5173'
+   'https://daff-telecom.vercel.app', // ✅ CORRECT sans /
+   'http://localhost:5173'
 ];
+
 
 // ✅ Middleware CORS propre
 app.use(cors({
