@@ -1,16 +1,32 @@
 const express = require('express');
-const app = express();
 const cors = require('cors');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const pool = require('./db');
-require('dotenv').config();
+const dotenv = require('dotenv');
+dotenv.config();
 
+const { pool } = require('./db');
+const { registerUser, loginUser } = require('./auth');
+
+const clientsRoutes = require('./clients');
+const productRoutes = require('./products');
+const ventesRoutes = require('./ventes');
+const reportsRouter = require('./reports');
+const returnsRouter = require('./returns');
+const remplacerRouter = require('./remplacements');
+const fournisseursRoutes = require('./fournisseurs');
+const facturesRoutes = require('./factures');
+const specialOrdersRoutes = require('./specialOrders');
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// ✅ CORS autorisé pour Railway Front + localhost et ton site Vercel
 const allowedOrigins = [
-  'http://localhost:5173',
-  'https://bago-front-production.up.railway.app',
+  // 'https://bago-front-production.up.railway.app',
+  // 'https://yattassaye-app.vercel.app', // 💡 C'est la ligne ajoutée !
+  'http://localhost:5173'
 ];
 
+// ✅ Middleware CORS propre
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -21,53 +37,129 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// Support des requêtes préflight (OPTIONS)
-app.options('*', cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('CORS preflight request blocked'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
+// ✅ Parser JSON
 app.use(express.json());
 
-app.post('/api/login', async (req, res) => {
-  const { username, password } = req.body;
+/* --- ROUTES --- */
 
+// Auth
+app.post('/api/login', loginUser);
+app.post('/api/register', registerUser);
+
+// Routes principales
+app.use('/api/clients', clientsRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/ventes', ventesRoutes);
+app.use('/api/reports', reportsRouter);
+app.use('/api/returns', returnsRouter);
+app.use('/api/remplacements', remplacerRouter);
+app.use('/api/fournisseurs', fournisseursRoutes);
+app.use('/api/factures', facturesRoutes);
+app.use('/api/special-orders', specialOrdersRoutes);
+
+// Route pour les statistiques du tableau de bord (nouvelle)
+app.get('/api/reports/dashboard-stats', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    const [
+      totalCartonsResult,
+      totalArrivageResult,
+      totalVentesResult,
+      totalReturnedResult,
+      totalSentToSupplierResult
+    ] = await Promise.all([
+      pool.query('SELECT COUNT(*) FROM cartons'),
+      pool.query('SELECT COUNT(*) FROM produits'),
+      pool.query('SELECT COUNT(*) FROM ventes'),
+      pool.query('SELECT COUNT(*) FROM retours'),
+      pool.query('SELECT COUNT(*) FROM remplacements')
+    ]);
 
-    if (result.rows.length === 0) {
-      return res.status(401).json({ message: 'Utilisateur non trouvé' });
-    }
+    const dashboardStats = {
+      totalCartons: parseInt(totalCartonsResult.rows[0].count, 10),
+      totalArrivage: parseInt(totalArrivageResult.rows[0].count, 10),
+      totalVentes: parseInt(totalVentesResult.rows[0].count, 10),
+      totalReturned: parseInt(totalReturnedResult.rows[0].count, 10),
+      totalSentToSupplier: parseInt(totalSentToSupplierResult.rows[0].count, 10)
+    };
 
-    const user = result.rows[0];
-    const validPassword = await bcrypt.compare(password, user.password);
-
-    if (!validPassword) {
-      return res.status(401).json({ message: 'Mot de passe incorrect' });
-    }
-
-    const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, process.env.JWT_SECRET, {
-      expiresIn: '1h'
-    });
-
-    res.json({ token });
+    res.json(dashboardStats);
   } catch (err) {
-    console.error('Erreur lors de la connexion:', err);
-    res.status(500).json({ message: 'Erreur serveur' });
+    console.error('Erreur lors de la récupération des statistiques du tableau de bord:', err);
+    res.status(500).json({ error: 'Erreur serveur lors de la récupération des statistiques du tableau de bord.' });
   }
 });
 
-app.listen(process.env.PORT || 5000, () => {
-  console.log(`Serveur démarré sur le port ${process.env.PORT || 5000}`);
+
+// Route bénéfices
+app.get('/api/benefices', async (req, res) => {
+  try {
+    let query = `
+      SELECT
+          vi.id AS vente_item_id,
+          vi.marque,
+          vi.modele,
+          vi.stockage,
+          vi.type,
+          vi.type_carton,
+          vi.imei,
+          vi.prix_unitaire_achat,
+          vi.prix_unitaire_vente,
+          vi.quantite_vendue,
+          (vi.prix_unitaire_vente - vi.prix_unitaire_achat) AS benefice_unitaire_produit,
+          (vi.quantite_vendue * (vi.prix_unitaire_vente - vi.prix_unitaire_achat)) AS benefice_total_par_ligne,
+          v.date_vente
+      FROM
+          vente_items vi
+      JOIN
+          ventes v ON vi.vente_id = v.id
+      JOIN
+          factures f ON v.id = f.vente_id
+      WHERE
+          vi.statut_vente = 'actif'
+          AND f.statut_facture = 'payee_integralement'
+    `;
+
+    const queryParams = [];
+    let paramIndex = 1;
+
+    const { date } = req.query;
+
+    if (date) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ error: 'Format de date invalide. Utilisez YYYY-MM-DD.' });
+      }
+
+      query += ` AND DATE(v.date_vente) = $${paramIndex}`;
+      queryParams.push(date);
+      paramIndex++;
+    }
+
+    query += ` ORDER BY v.date_vente DESC;`;
+
+    const itemsResult = await pool.query(query, queryParams);
+    const soldItems = itemsResult.rows;
+
+    let totalBeneficeGlobal = 0;
+    soldItems.forEach(item => {
+      totalBeneficeGlobal += parseFloat(item.benefice_total_par_ligne);
+    });
+
+    res.json({
+      sold_items: soldItems,
+      total_benefice_global: parseFloat(totalBeneficeGlobal)
+    });
+
+  } catch (err) {
+    console.error('Erreur lors du calcul des bénéfices:', err);
+    res.status(500).json({ error: 'Erreur interne du serveur lors du calcul des bénéfices.' });
+  }
+});
+
+/* --- DÉMARRAGE DU SERVEUR --- */
+app.listen(PORT, () => {
+  console.log('✅ Connexion à la base de données réussie');
+  console.log(`🚀 Serveur backend lancé sur le port ${PORT}`);
 });

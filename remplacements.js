@@ -3,6 +3,170 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('./db'); // Assurez-vous que le chemin est correct
 
+// Route pour obtenir les statistiques du tableau de bord (placée en premier pour éviter les conflits)
+router.get('/dashboard-stats', async (req, res) => {
+  try {
+    const client = await pool.connect();
+
+    // Compter les mobiles de type 'CARTON' avec le statut 'active'
+    const cartonsResult = await client.query(
+      `SELECT COALESCE(SUM(quantite), 0) AS total_cartons FROM products WHERE type = 'CARTON' AND status = 'active';`
+    );
+    const totalCartons = parseInt(cartonsResult.rows[0].total_cartons, 10);
+
+    // Compter les mobiles de type 'ARRIVAGE' avec le statut 'active'
+    const arrivageResult = await client.query(
+      `SELECT COALESCE(SUM(quantite), 0) AS total_arrivage FROM products WHERE type = 'ARRIVAGE' AND status = 'active';`
+    );
+    const totalArrivage = parseInt(arrivageResult.rows[0].total_arrivage, 10);
+
+    // Compter les mobiles vendus (statut 'actif' dans vente_items)
+    const ventesResult = await client.query(
+      `SELECT COALESCE(SUM(quantite_vendue), 0) AS total_ventes FROM vente_items WHERE statut_vente = 'actif';`
+    );
+    const totalVentes = parseInt(ventesResult.rows[0].total_ventes, 10);
+
+    // Compter les mobiles retournés (statut 'retourne' dans returns)
+    const totalReturnedResult = await client.query(
+      `SELECT COALESCE(COUNT(id), 0) AS total_returned FROM returns WHERE status = 'retourne';`
+    );
+    const totalReturned = parseInt(totalReturnedResult.rows[0].total_returned, 10);
+
+    // Total Mobiles Envoyés au Fournisseur (dans remplacer)
+    const totalSentToSupplierResult = await client.query(
+      `SELECT COALESCE(COUNT(id), 0) AS total_sent_to_supplier FROM remplacer;`
+    );
+    const totalSentToSupplier = parseInt(totalSentToSupplierResult.rows[0].total_sent_to_supplier, 10);
+
+    // Total Mobiles Rendu (statut 'rendu' dans vente_items)
+    const totalRenduResult = await client.query(
+      `SELECT COALESCE(SUM(vi.quantite_vendue), 0) AS total_rendu FROM vente_items WHERE statut_vente = 'rendu';`
+    );
+    const totalRendu = parseInt(totalRenduResult.rows[0].total_rendu, 10);
+
+    // Nouvelles stats journalières (à conserver si nécessaire, sinon à commenter)
+    const addedTodayCartonResult = await client.query(
+      `SELECT COALESCE(COUNT(id), 0) AS count FROM products WHERE type = 'CARTON' AND date_ajout::date = CURRENT_DATE;`
+    );
+    const addedTodayCarton = parseInt(addedTodayCartonResult.rows[0].count, 10);
+
+    const addedTodayArrivageResult = await client.query(
+      `SELECT COALESCE(COUNT(id), 0) AS count FROM products WHERE type = 'ARRIVAGE' AND date_ajout::date = CURRENT_DATE;`
+    );
+    const addedTodayArrivage = parseInt(addedTodayArrivageResult.rows[0].count, 10);
+
+    const soldTodayCartonResult = await client.query(
+      `SELECT COALESCE(SUM(vi.quantite_vendue), 0) AS count
+       FROM vente_items vi
+       JOIN ventes v ON vi.vente_id = v.id
+       JOIN products p ON vi.produit_id = p.id
+       WHERE p.type = 'CARTON' AND v.date_vente::date = CURRENT_DATE AND vi.statut_vente = 'actif';`
+    );
+    const soldTodayCarton = parseInt(soldTodayCartonResult.rows[0].count, 10);
+
+    const soldTodayArrivageResult = await client.query(
+      `SELECT COALESCE(SUM(vi.quantite_vendue), 0) AS count
+       FROM vente_items vi
+       JOIN ventes v ON vi.vente_id = v.id
+       JOIN products p ON vi.produit_id = p.id
+       WHERE p.type = 'ARRIVAGE' AND v.date_vente::date = CURRENT_DATE AND vi.statut_vente = 'actif';`
+    );
+    const soldTodayArrivage = parseInt(soldTodayArrivageResult.rows[0].count, 10);
+
+    const returnedTodayCartonResult = await client.query(
+      `SELECT COALESCE(COUNT(r.id), 0) AS count
+       FROM returns r
+       JOIN products p ON r.product_id = p.id
+       WHERE p.type = 'CARTON' AND r.return_date::date = CURRENT_DATE AND r.status = 'retourne';`
+    );
+    const returnedTodayCarton = parseInt(returnedTodayCartonResult.rows[0].count, 10);
+
+    const returnedTodayArrivageResult = await client.query(
+      `SELECT COALESCE(COUNT(r.id), 0) AS count
+       FROM returns r
+       JOIN products p ON r.product_id = p.id
+       WHERE p.type = 'ARRIVAGE' AND r.return_date::date = CURRENT_DATE AND r.status = 'retourne';`
+    );
+    const returnedTodayArrivage = parseInt(returnedTodayArrivageResult.rows[0].count, 10);
+
+    const renduTodayCartonResult = await client.query(
+      `SELECT COALESCE(SUM(vi.quantite_vendue), 0) AS count
+       FROM vente_items vi
+       JOIN products p ON vi.produit_id = p.id
+       WHERE p.type = 'CARTON' AND vi.rendu_date::date = CURRENT_DATE AND vi.statut_vente = 'rendu';`
+    );
+    const renduTodayCarton = parseInt(renduTodayCartonResult.rows[0].count, 10);
+
+    const renduTodayArrivageResult = await client.query(
+      `SELECT COALESCE(SUM(vi.quantite_vendue), 0) AS count
+       FROM vente_items vi
+       JOIN products p ON vi.produit_id = p.id
+       WHERE p.type = 'ARRIVAGE' AND vi.rendu_date::date = CURRENT_DATE AND vi.statut_vente = 'rendu';`
+    );
+    const renduTodayArrivage = parseInt(renduTodayArrivageResult.rows[0].count, 10);
+
+    const yesterdayStockCarton = totalCartons + soldTodayCarton - addedTodayCarton + returnedTodayCarton + renduTodayCarton;
+    const yesterdayStockArrivage = totalArrivage + soldTodayArrivage - addedTodayArrivage + returnedTodayArrivage + renduTodayArrivage;
+    
+    // Requêtes de débogage pour les factures
+    const invoiceSalesCartonTodayResult = await client.query(`
+        SELECT COALESCE(SUM(vi.prix_unitaire_vente * vi.quantite_vendue), 0) AS amount,
+               COALESCE(COUNT(vi.id), 0) AS count
+        FROM vente_items vi
+        JOIN ventes v ON vi.vente_id = v.id
+        JOIN factures f ON v.id = f.vente_id
+        WHERE vi.type = 'CARTON'
+          AND DATE(f.date_facture) = CURRENT_DATE
+          AND vi.statut_vente = 'actif';
+    `);
+
+    const invoiceSalesArrivageTodayResult = await client.query(`
+        SELECT COALESCE(SUM(vi.prix_unitaire_vente * vi.quantite_vendue), 0) AS amount,
+               COALESCE(COUNT(vi.id), 0) AS count
+        FROM vente_items vi
+        JOIN ventes v ON vi.vente_id = v.id
+        JOIN factures f ON v.id = f.vente_id
+        WHERE vi.type = 'ARRIVAGE'
+          AND DATE(f.date_facture) = CURRENT_DATE
+          AND vi.statut_vente = 'actif';
+    `);
+
+    client.release();
+
+    res.status(200).json({
+      totalCartons,
+      totalArrivage,
+      totalVentes,
+      totalReturned,
+      totalSentToSupplier,
+      totalRendu,
+      addedTodayCarton,
+      addedTodayArrivage,
+      soldTodayCarton,
+      soldTodayArrivage,
+      returnedTodayCarton,
+      returnedTodayArrivage,
+      renduTodayCarton,
+      renduTodayArrivage,
+      yesterdayStockCarton: Math.max(0, yesterdayStockCarton),
+      yesterdayStockArrivage: Math.max(0, yesterdayStockArrivage),
+      invoiceSalesCartonTodayAmount: invoiceSalesCartonTodayResult.rows[0].amount,
+      invoiceSalesCartonTodayCount: invoiceSalesCartonTodayResult.rows[0].count,
+      invoiceSalesArrivageTodayAmount: invoiceSalesArrivageTodayResult.rows[0].amount,
+      invoiceSalesArrivageTodayCount: invoiceSalesArrivageTodayResult.rows[0].count,
+    });
+
+  } catch (err) {
+    console.error('Erreur lors de la récupération des statistiques du tableau de bord:', err);
+    res.status(500).json({ error: 'Erreur serveur lors de la récupération des statistiques du tableau de bord.' });
+  } finally {
+    if (client) {
+      client.release();
+    }
+  }
+});
+
+
 // Route pour obtenir tous les mobiles dans la table 'remplacer'
 router.get('/', async (req, res) => {
   try {
@@ -155,48 +319,22 @@ router.post('/receive-from-supplier', async (req, res) => {
   }
 });
 
-// Route pour obtenir les statistiques du tableau de bord
-router.get('/dashboard-stats', async (req, res) => {
-  try {
-    const client = await pool.connect();
-
-    // Compter les mobiles de type 'CARTON' avec le statut 'active'
-    const cartonsResult = await client.query(
-      `SELECT COALESCE(SUM(quantite), 0) AS total_cartons FROM products WHERE type = 'CARTON' AND status = 'active';`
-    );
-    const totalCartons = parseInt(cartonsResult.rows[0].total_cartons, 10);
-
-    // Compter les mobiles de type 'ARRIVAGE' avec le statut 'active'
-    const arrivageResult = await client.query(
-      `SELECT COALESCE(SUM(quantite), 0) AS total_arrivage FROM products WHERE type = 'ARRIVAGE' AND status = 'active';`
-    );
-    const totalArrivage = parseInt(arrivageResult.rows[0].total_arrivage, 10);
-
-    // Compter les mobiles vendus (statut 'actif' ou 'remplace' dans vente_items)
-    const ventesResult = await client.query(
-      `SELECT COUNT(*) AS total_ventes FROM vente_items WHERE statut_vente IN ('actif', 'remplace');`
-    );
-    const totalVentes = parseInt(ventesResult.rows[0].total_ventes, 10);
-
-    // Compter les mobiles remplacés (dans la table 'remplacer')
-    const remplacerResult = await client.query(
-      `SELECT COUNT(*) AS total_remplacer FROM remplacer;`
-    );
-    const totalRemplacer = parseInt(remplacerResult.rows[0].total_remplacer, 10);
-
-    client.release(); // Libérer le client après utilisation
-
-    res.status(200).json({
-      totalCartons,
-      totalArrivage,
-      totalVentes,
-      totalRemplacer
-    });
-
-  } catch (err) {
-    console.error('Erreur lors de la récupération des statistiques du tableau de bord:', err);
-    res.status(500).json({ error: 'Erreur serveur lors de la récupération des statistiques du tableau de bord.' });
-  }
+// Route pour obtenir un remplacement par ID
+router.get('/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const query = `
+            SELECT * FROM remplacer WHERE id = $1;
+        `;
+        const result = await pool.query(query, [id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Remplacement non trouvé.' });
+        }
+        res.status(200).json(result.rows[0]);
+    } catch (error) {
+        console.error('Erreur lors de la récupération du remplacement par ID:', error);
+        res.status(500).json({ error: 'Erreur serveur.' });
+    }
 });
 
 module.exports = router;

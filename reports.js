@@ -1,7 +1,7 @@
 // backend/reports.js
 const express = require('express');
 const router = express.Router();
-const { pool } = require('./db'); // Assurez-vous que votre fichier db.js exporte le pool
+const { pool } = require('./db');
 
 // Route GET pour obtenir le résumé du stock par modèle
 router.get('/stock-summary', async (req, res) => {
@@ -37,11 +37,10 @@ router.get('/dashboard-stats', async (req, res) => {
   try {
     client = await pool.connect();
 
-    // --- DÉBOGAGE : Afficher la date actuelle du serveur ---
+    // DÉBOGAGE : Afficher la date actuelle du serveur
     const currentDateResult = await client.query(`SELECT CURRENT_DATE AS server_date;`);
     const serverDate = currentDateResult.rows[0].server_date;
     console.log(`Backend Reports: Date actuelle du serveur (CURRENT_DATE): ${serverDate}`);
-    // --- FIN DÉBOGAGE ---
 
     // Total Mobiles en Carton (statut 'active')
     const totalCartonsResult = await client.query(
@@ -75,10 +74,9 @@ router.get('/dashboard-stats', async (req, res) => {
 
     // Total Mobiles Rendu (statut 'rendu' dans vente_items)
     const totalRenduResult = await client.query(
-      `SELECT COALESCE(SUM(quantite_vendue), 0) AS total_rendu FROM vente_items WHERE statut_vente = 'rendu';`
+      `SELECT COALESCE(SUM(vi.quantite_vendue), 0) AS total_rendu FROM vente_items vi WHERE vi.statut_vente = 'rendu';`
     );
     const totalRendu = parseInt(totalRenduResult.rows[0].total_rendu, 10);
-
 
     // --- NOUVELLES STATISTIQUES JOURNALIÈRES ---
 
@@ -98,8 +96,8 @@ router.get('/dashboard-stats', async (req, res) => {
     const soldTodayCartonResult = await client.query(
       `SELECT COALESCE(SUM(vi.quantite_vendue), 0) AS count
        FROM vente_items vi
-       JOIN ventes v ON vi.vente_id = v.id
        JOIN products p ON vi.produit_id = p.id
+       JOIN ventes v ON vi.vente_id = v.id
        WHERE p.type = 'CARTON' AND v.date_vente::date = CURRENT_DATE AND vi.statut_vente = 'actif';`
     );
     const soldTodayCarton = parseInt(soldTodayCartonResult.rows[0].count, 10);
@@ -108,8 +106,8 @@ router.get('/dashboard-stats', async (req, res) => {
     const soldTodayArrivageResult = await client.query(
       `SELECT COALESCE(SUM(vi.quantite_vendue), 0) AS count
        FROM vente_items vi
-       JOIN ventes v ON vi.vente_id = v.id
        JOIN products p ON vi.produit_id = p.id
+       JOIN ventes v ON vi.vente_id = v.id
        WHERE p.type = 'ARRIVAGE' AND v.date_vente::date = CURRENT_DATE AND vi.statut_vente = 'actif';`
     );
     const soldTodayArrivage = parseInt(soldTodayArrivageResult.rows[0].count, 10);
@@ -132,32 +130,31 @@ router.get('/dashboard-stats', async (req, res) => {
     );
     const returnedTodayArrivage = parseInt(returnedTodayArrivageResult.rows[0].count, 10);
 
-    // Pièces rendues aujourd'hui (Carton) - REQUÊTE CORRIGÉE
+    // Pièces rendues aujourd'hui (Carton)
     const renduTodayCartonResult = await client.query(
       `SELECT COALESCE(SUM(vi.quantite_vendue), 0) AS count
        FROM vente_items vi
+       JOIN ventes v ON vi.vente_id = v.id
        JOIN products p ON vi.produit_id = p.id
-       WHERE p.type = 'CARTON' AND vi.rendu_date::date = CURRENT_DATE AND vi.statut_vente = 'rendu';`
+       WHERE p.type = 'CARTON' AND v.date_vente::date = CURRENT_DATE AND vi.statut_vente = 'rendu';`
     );
     const renduTodayCarton = parseInt(renduTodayCartonResult.rows[0].count, 10);
 
-    // Pièces rendues aujourd'hui (Arrivage) - REQUÊTE CORRIGÉE
+    // Pièces rendues aujourd'hui (Arrivage)
     const renduTodayArrivageResult = await client.query(
       `SELECT COALESCE(SUM(vi.quantite_vendue), 0) AS count
        FROM vente_items vi
+       JOIN ventes v ON vi.vente_id = v.id
        JOIN products p ON vi.produit_id = p.id
-       WHERE p.type = 'ARRIVAGE' AND vi.rendu_date::date = CURRENT_DATE AND vi.statut_vente = 'rendu';`
+       WHERE p.type = 'ARRIVAGE' AND v.date_vente::date = CURRENT_DATE AND vi.statut_vente = 'rendu';`
     );
     const renduTodayArrivage = parseInt(renduTodayArrivageResult.rows[0].count, 10);
 
-
     // Calcul du stock d'hier (approximation)
-    // Inclut les ventes et les rendus dans le calcul du stock d'hier
     const yesterdayStockCarton = totalCartons + soldTodayCarton - addedTodayCarton + returnedTodayCarton + renduTodayCarton;
     const yesterdayStockArrivage = totalArrivage + soldTodayArrivage - addedTodayArrivage + returnedTodayArrivage + renduTodayArrivage;
 
-
-    // --- DÉBOGAGE : Vérifier les résultats des requêtes de facturation ---
+    // Requêtes de facturation
     const invoiceSalesCartonTodayResult = await client.query(`
         SELECT COALESCE(SUM(vi.prix_unitaire_vente * vi.quantite_vendue), 0) AS amount,
                COALESCE(COUNT(vi.id), 0) AS count
@@ -168,8 +165,6 @@ router.get('/dashboard-stats', async (req, res) => {
           AND DATE(f.date_facture) = CURRENT_DATE
           AND vi.statut_vente = 'actif';
     `);
-    console.log(`Backend Reports: Factures Carton Aujourd'hui - Montant: ${invoiceSalesCartonTodayResult.rows[0].amount}, Compte: ${invoiceSalesCartonTodayResult.rows[0].count}`);
-
 
     const invoiceSalesArrivageTodayResult = await client.query(`
         SELECT COALESCE(SUM(vi.prix_unitaire_vente * vi.quantite_vendue), 0) AS amount,
@@ -181,9 +176,7 @@ router.get('/dashboard-stats', async (req, res) => {
           AND DATE(f.date_facture) = CURRENT_DATE
           AND vi.statut_vente = 'actif';
     `);
-    console.log(`Backend Reports: Factures Arrivage Aujourd'hui - Montant: ${invoiceSalesArrivageTodayResult.rows[0].amount}, Compte: ${invoiceSalesArrivageTodayResult.rows[0].count}`);
-    // --- FIN DÉBOGAGE ---
-
+    
     res.status(200).json({
       totalCartons,
       totalArrivage,
@@ -191,7 +184,6 @@ router.get('/dashboard-stats', async (req, res) => {
       totalReturned,
       totalSentToSupplier,
       totalRendu,
-      // Nouvelles stats journalières
       addedTodayCarton,
       addedTodayArrivage,
       soldTodayCarton,

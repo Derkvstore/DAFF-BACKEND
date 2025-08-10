@@ -1,5 +1,5 @@
 const bcrypt = require('bcrypt');
 
-bcrypt.hash('admin123', 10).then(hash => {
+bcrypt.hash('blopa7267', 10).then(hash => {
   console.log('Hash généré :', hash);
 });

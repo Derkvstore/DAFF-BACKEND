@@ -717,7 +717,7 @@ router.post('/mark-as-rendu', async (req, res) => {
     await clientDb.query(
       'UPDATE ventes SET montant_total = $1, statut_paiement = $2 WHERE id = $3',
       [newMontantTotal, newStatutPaiement, vente_id]
-    );
+    ); 
 
     // Calculer le nouveau montant_actuel_du pour la facture
     const newMontantActuelDu = newMontantTotal - currentMontantPaye;
@@ -950,8 +950,8 @@ router.get('/:id/pdf', async (req, res) => {
   <div class="header">
     <div class="header-logo-container">
       <!-- 🔽 Place ton logo ici -->
-      <img src="LOGO_URL_HERE" alt="Logo" />
-      <h1 color = "red" >DAFF TELECOM </h1>
+      <img src="logo.png" alt="Logo" />
+      <h1 color = "red" > YATTASSAYE ELECTRONIQUE </h1>
       <p style="font-size: 11px; color: #666; margin-top: 6px;">Halle de Bamako<br/>Tél: 79 79 83 77</p>
     </div>
     <div class="header-info">
