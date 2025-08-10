@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { pool } = require('./db'); // Assurez-vous que le chemin vers db.js est correct
-const pdf = require('html-pdf'); // Importation de la bibliothèque html-pdf
+const { pool } = require('./db');
+const PDFDocument = require('pdfkit'); // 📦 Nouvelle dépendance, assurez-vous de l'installer
 
 // Fonction utilitaire pour formater les montants
 const formatAmount = (amount) => {
@@ -393,7 +393,6 @@ router.post('/cancel-item', async (req, res) => {
       newStatutPaiement = 'en_attente_paiement';
     }
 
-    // Mettre à jour la vente principale avec le nouveau montant total et statut
     await clientDb.query(
       'UPDATE ventes SET montant_total = $1, statut_paiement = $2 WHERE id = $3',
       [newMontantTotal, newStatutPaiement, venteId]
@@ -737,7 +736,7 @@ router.post('/mark-as-rendu', async (req, res) => {
 
     if (parseInt(inactive_items, 10) === parseInt(total_items, 10)) {
         await clientDb.query(
-            'UPDATE ventes SET statut_paiement = \'annulee\' WHERE id = $1', // Ou un autre statut comme 'vente_rendue'
+            'UPDATE ventes SET statut_paiement = \'annulee\' WHERE id = $1',
             [vente_id]
         );
         // Mettre à jour également la facture si la vente entière est annulée
@@ -762,7 +761,6 @@ router.post('/mark-as-rendu', async (req, res) => {
     }
   }
 });
-
 
 
 // Route pour générer un PDF de la facture pour une vente donnée
