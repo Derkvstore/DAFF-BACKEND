@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('./db');
-const PDFDocument = require('pdfkit'); // 📦 Nouvelle dépendance, assurez-vous de l'installer
+const pdf = require('html-pdf'); // Importation de la bibliothèque html-pdf
 
 // Fonction utilitaire pour formater les montants
 const formatAmount = (amount) => {
@@ -823,6 +823,8 @@ router.get('/:id/pdf', async (req, res) => {
     const balanceDue = sale.montant_total - sale.montant_paye;
     const totalPieces = sale.articles.reduce((acc, item) => acc + item.quantite_vendue, 0);
 
+    const logoUrl = 'https://daff-telecom.vercel.app/images/logo.png'; // L'URL de votre logo déployé
+
     let articlesHtml = sale.articles.map(item => {
       let descriptionParts = [item.marque, item.modele];
       if (item.stockage) descriptionParts.push(`${item.stockage}`);
@@ -842,7 +844,7 @@ router.get('/:id/pdf', async (req, res) => {
         </tr>
       `;
     }).join('');
-
+   
    const htmlContent = `
 <style>
   * {
@@ -948,7 +950,7 @@ router.get('/:id/pdf', async (req, res) => {
   <div class="header">
     <div class="header-logo-container">
       <!-- 🔽 Place ton logo ici -->
-      <img src="logo.png" alt="Logo" />
+      <img src="${logoUrl}" alt="Logo" />
       <h1 color = "red" > YATTASSAYE ELECTRONIQUE </h1>
       <p style="font-size: 11px; color: #666; margin-top: 6px;">Halle de Bamako<br/>Tél: 79 79 83 77</p>
     </div>
