@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('./db');
-const pdf = require('html-pdf'); // Importation de la bibliothèque html-pdf
+const PDFDocument = require('pdfkit'); // 📦 Nouvelle dépendance, assurez-vous de l'installer
 
 // Fonction utilitaire pour formater les montants
 const formatAmount = (amount) => {
@@ -641,112 +641,6 @@ router.post('/return-item', async (req, res) => {
     }
 
     await clientDb.query('COMMIT');
-    res.status(200).json({ message: 'Article retourné et enregistré avec succès.' });
-
-  } catch (error) {
-    if (clientDb) {
-      await clientDb.query('ROLLBACK');
-    }
-    console.error('Erreur lors du retour de l\'article:', error);
-    res.status(500).json({ error: 'Erreur serveur lors du retour de l\'article.' });
-  } finally {
-    if (clientDb) {
-      clientDb.release();
-    }
-  }
-});
-
-// Route pour marquer un article comme "rendu" (client a rendu le mobile)
-router.post('/mark-as-rendu', async (req, res) => {
-  const { vente_item_id, vente_id, imei, reason, produit_id, is_special_sale_item, marque, modele, stockage, type, type_carton, client_nom } = req.body;
-  let clientDb;
-
-  if (!vente_item_id || !vente_id || !imei || !reason || !produit_id) {
-    return res.status(400).json({ error: 'Données de rendu manquantes ou invalides.' });
-  }
-
-  try {
-    clientDb = await pool.connect();
-    await clientDb.query('BEGIN');
-
-    // 1. Mettre à jour le statut de l'article de vente à 'rendu' et ENREGISTRER la date du rendu
-    // Assurez-vous que la colonne 'rendu_date' existe bien dans votre table 'vente_items'
-    const updateItemResult = await clientDb.query(
-      'UPDATE vente_items SET statut_vente = $1, cancellation_reason = $2, rendu_date = NOW() WHERE id = $3 AND vente_id = $4 RETURNING *',
-      ['rendu', reason, vente_item_id, vente_id]
-    );
-
-    if (updateItemResult.rows.length === 0) {
-      await clientDb.query('ROLLBACK');
-      return res.status(404).json({ error: 'Article de vente non trouvé ou déjà marqué comme rendu.' });
-    }
-
-    // 2. Remettre le produit en 'active' dans la table products SANS toucher à la date_ajout
-    // Et incrémenter la quantité existante (quantite + 1)
-    if (produit_id) {
-      await clientDb.query(
-        'UPDATE products SET status = $1, quantite = quantite + 1 WHERE id = $2 AND imei = $3',
-        ['active', produit_id, imei]
-      );
-    }
-
-    // 3. Recalculer le montant total de la vente et le statut de paiement
-    const recalculatedSaleTotalResult = await clientDb.query(
-      `SELECT COALESCE(SUM(vi.prix_unitaire_vente * vi.quantite_vendue), 0) AS new_montant_total
-       FROM vente_items vi
-       WHERE vi.vente_id = $1 AND vi.statut_vente = 'actif'`, // Seuls les articles actifs comptent
-      [vente_id]
-    );
-    const newMontantTotal = parseFloat(recalculatedSaleTotalResult.rows[0].new_montant_total);
-
-    const currentSaleResult = await clientDb.query('SELECT montant_paye FROM ventes WHERE id = $1', [vente_id]);
-    const currentMontantPaye = parseFloat(currentSaleResult.rows[0].montant_paye);
-
-    let newStatutPaiement = 'en_attente_paiement';
-    if (newMontantTotal <= currentMontantPaye) {
-      newStatutPaiement = 'payee_integralement';
-    } else if (currentMontantPaye > 0) {
-      newStatutPaiement = 'paiement_partiel';
-    } else if (newMontantTotal === 0 && currentMontantPaye === 0) { // Cas où la vente est vide et rien n'a été payé
-      newStatutPaiement = 'annulee'; // Ou un statut spécifique pour les ventes rendues sans paiement
-    }
-
-
-    // Mettre à jour la vente principale avec le nouveau montant total et statut
-    await clientDb.query(
-      'UPDATE ventes SET montant_total = $1, statut_paiement = $2 WHERE id = $3',
-      [newMontantTotal, newStatutPaiement, vente_id]
-    ); 
-
-    // Calculer le nouveau montant_actuel_du pour la facture
-    const newMontantActuelDu = newMontantTotal - currentMontantPaye;
-
-    // 4. Mettre à jour le statut de la facture associée
-    await clientDb.query(
-      'UPDATE factures SET statut_facture = $1, montant_original_facture = $2, montant_actuel_du = $3, montant_paye_facture = $4 WHERE vente_id = $5',
-      [newStatutPaiement, newMontantTotal, newMontantActuelDu, currentMontantPaye, vente_id]
-    );
-
-    // Optionnel: Mettre à jour le statut de la vente mère si tous les articles sont rendus/annulés/retournés
-    const saleItemsStatusCheck = await clientDb.query(
-      'SELECT COUNT(*) AS total_items, SUM(CASE WHEN statut_vente IN (\'annule\', \'retourne\', \'rendu\') THEN 1 ELSE 0 END) AS inactive_items FROM vente_items WHERE vente_id = $1',
-      [vente_id]
-    );
-    const { total_items, inactive_items } = saleItemsStatusCheck.rows[0];
-
-    if (parseInt(inactive_items, 10) === parseInt(total_items, 10)) {
-        await clientDb.query(
-            'UPDATE ventes SET statut_paiement = \'annulee\' WHERE id = $1',
-            [vente_id]
-        );
-        // Mettre à jour également la facture si la vente entière est annulée
-        await clientDb.query(
-            'UPDATE factures SET statut_facture = \'annulee\' WHERE vente_id = $1',
-            [vente_id]
-        );
-    }
-
-    await clientDb.query('COMMIT');
     res.status(200).json({ message: 'Article marqué comme rendu et remis en stock avec succès.' });
 
   } catch (error) {
@@ -823,8 +717,6 @@ router.get('/:id/pdf', async (req, res) => {
     const balanceDue = sale.montant_total - sale.montant_paye;
     const totalPieces = sale.articles.reduce((acc, item) => acc + item.quantite_vendue, 0);
 
-    const logoUrl = 'https://daff-telecom.vercel.app/images/logo.png'; // L'URL de votre logo déployé
-
     let articlesHtml = sale.articles.map(item => {
       let descriptionParts = [item.marque, item.modele];
       if (item.stockage) descriptionParts.push(`${item.stockage}`);
@@ -844,7 +736,7 @@ router.get('/:id/pdf', async (req, res) => {
         </tr>
       `;
     }).join('');
-   
+
    const htmlContent = `
 <style>
   * {
@@ -950,7 +842,7 @@ router.get('/:id/pdf', async (req, res) => {
   <div class="header">
     <div class="header-logo-container">
       <!-- 🔽 Place ton logo ici -->
-      <img src="${logoUrl}" alt="Logo" />
+      <img src="logo.png" alt="Logo" />
       <h1 color = "red" > YATTASSAYE ELECTRONIQUE </h1>
       <p style="font-size: 11px; color: #666; margin-top: 6px;">Halle de Bamako<br/>Tél: 79 79 83 77</p>
     </div>
@@ -1024,4 +916,4 @@ router.get('/:id/pdf', async (req, res) => {
   }
 });
 
-module.exports = router;
+module.exports = routes;
