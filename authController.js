@@ -49,10 +49,13 @@ async function loginUser(req, res) {
       return res.status(401).json({ error: 'Mot de passe incorrect' });
     }
 
-    // 🔐 Générer un token
+    // Correction : supprimer les anciennes sessions avant d’en créer une nouvelle
+    await pool.query('DELETE FROM sessions WHERE user_id = $1', [user.id]);
+
+    // Générer un token
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '2h' });
 
-    // 📦 Stocker en base
+    // Stocker la session en base
     await pool.query(
       'INSERT INTO sessions (user_id, token) VALUES ($1, $2)',
       [user.id, token]
@@ -66,4 +69,3 @@ async function loginUser(req, res) {
 }
 
 module.exports = { registerUser, loginUser };
-

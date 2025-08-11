@@ -1,5 +1,4 @@
-// auth.js
-const { pool } = require('./db'); // <<< CORRECT ICI
+const { pool } = require('./db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
@@ -54,8 +53,8 @@ async function loginUser(req, res) {
 
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-    // Stockez la session si vous le souhaitez (votre code original)
-    // await pool.query('INSERT INTO sessions (user_id, token) VALUES ($1, $2)', [user.id, token]);
+    // Stocker la session dans la base
+    await pool.query('INSERT INTO sessions (user_id, token) VALUES ($1, $2)', [user.id, token]);
 
     res.json({ message: 'Connecté', token, fullName: user.full_name, username: user.username });
   } catch (err) {
@@ -64,4 +63,23 @@ async function loginUser(req, res) {
   }
 }
 
-module.exports = { registerUser, loginUser };
+// Nouvelle fonction logout
+async function logoutUser(req, res) {
+  const token = req.headers.authorization?.split(' ')[1]; // Récupère le token dans le header Authorization: Bearer TOKEN
+
+  if (!token) {
+    return res.status(401).json({ error: 'Token manquant' });
+  }
+
+  try {
+    // Supprime la session correspondante dans la base
+    await pool.query('DELETE FROM sessions WHERE token = $1', [token]);
+
+    res.json({ message: 'Déconnecté avec succès' });
+  } catch (err) {
+    console.error('Erreur logout :', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+}
+
+module.exports = { registerUser, loginUser, logoutUser };
