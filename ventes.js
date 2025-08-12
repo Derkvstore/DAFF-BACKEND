@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('./db'); // Assurez-vous que le chemin vers db.js est correct
-const pdf = require('html-pdf'); // Importation de la bibliothèque html-pdf
+const puppeteer = require('puppeteer'); // Importation de la bibliothèque puppeteer
 
 // Fonction utilitaire pour formater les montants
 const formatAmount = (amount) => {
@@ -722,7 +722,7 @@ router.post('/mark-as-rendu', async (req, res) => {
     // Calculer le nouveau montant_actuel_du pour la facture
     const newMontantActuelDu = newMontantTotal - currentMontantPaye;
 
-    // 4. Mettre à jour le statut de la facture associée
+    // Mettre à jour le statut de la facture associée
     await clientDb.query(
       'UPDATE factures SET statut_facture = $1, montant_original_facture = $2, montant_actuel_du = $3, montant_paye_facture = $4 WHERE vente_id = $5',
       [newStatutPaiement, newMontantTotal, newMontantActuelDu, currentMontantPaye, vente_id]

@@ -17,12 +17,13 @@
     "csv-parser": "^3.2.0",
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
-    "html-pdf": "^3.0.1",
+    "html-pdf": "^1.5.0",
     "jsonwebtoken": "^9.0.2",
     "moment-timezone": "^0.6.0",
     "multer": "^2.0.2",
     "pdfkit": "^0.17.1",
     "pg": "^8.16.3",
+    "puppeteer": "^24.16.1",
     "xlsx": "^0.18.5"
   }
 }
