@@ -996,25 +996,25 @@ router.get('/:id/pdf', async (req, res) => {
 </div>
 `;
 
-    const options = {
+    const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    const page = await browser.newPage();
+    
+    // Utilisez page.setContent pour injecter votre HTML et attendre que le réseau soit inactif
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    
+    const pdfBuffer = await page.pdf({
       format: 'A4',
-      orientation: 'portrait',
-      border: '1cm',
-      quality: '75',
-    };
-
-    pdf.create(htmlContent, options).toBuffer((err, buffer) => {
-      if (err) {
-        console.error('Erreur lors de la création du PDF:', err);
-        return res.status(500).json({ error: 'Erreur lors de la génération du PDF.' });
-      }
-      res.writeHead(200, {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename=facture_${venteId}.pdf`,
-        'Content-Length': buffer.length
-      });
-      res.end(buffer);
+      printBackground: true, // Pour que les couleurs de fond soient incluses
     });
+    
+    await browser.close();
+    
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename=facture_${venteId}.pdf`,
+      'Content-Length': pdfBuffer.length
+    });
+    res.send(pdfBuffer);
 
   } catch (error) {
     console.error('Erreur lors de la génération du PDF de la facture:', error);
