@@ -22,7 +22,7 @@ const PORT = process.env.PORT || 3001;
 // ✅ CORS autorisé pour Railway Front + localhost et ton site Vercel
 const allowedOrigins = [
    'https://daff-backend-production.up.railway.app',
-   'https://daff-telecom.vercel.app', // ✅ CORRECT sans /
+   'https://daff-telecom.vercel.app',
    'http://localhost:5173'
 ];
 
@@ -61,7 +61,7 @@ app.use('/api/fournisseurs', fournisseursRoutes);
 app.use('/api/factures', facturesRoutes);
 app.use('/api/special-orders', specialOrdersRoutes);
 
-// Route pour les statistiques du tableau de bord (nouvelle)
+// Route pour les statistiques du tableau de bord (mise à jour)
 app.get('/api/reports/dashboard-stats', async (req, res) => {
   try {
     const [
@@ -71,11 +71,13 @@ app.get('/api/reports/dashboard-stats', async (req, res) => {
       totalReturnedResult,
       totalSentToSupplierResult
     ] = await Promise.all([
-      pool.query('SELECT COUNT(*) FROM cartons'),
-      pool.query('SELECT COUNT(*) FROM produits'),
+      // Utilise la table 'products' avec la condition de 'type'
+      pool.query('SELECT COUNT(*) FROM products WHERE type = \'CARTON\''),
+      pool.query('SELECT COUNT(*) FROM products WHERE type = \'ARRIVAGE\''),
       pool.query('SELECT COUNT(*) FROM ventes'),
-      pool.query('SELECT COUNT(*) FROM retours'),
-      pool.query('SELECT COUNT(*) FROM remplacements')
+      // Utilise les tables 'returns' et 'remplacer'
+      pool.query('SELECT COUNT(*) FROM returns'),
+      pool.query('SELECT COUNT(*) FROM remplacer')
     ]);
 
     const dashboardStats = {
@@ -94,7 +96,7 @@ app.get('/api/reports/dashboard-stats', async (req, res) => {
 });
 
 
-// Route bénéfices
+// Route bénéfices (corrigée)
 app.get('/api/benefices', async (req, res) => {
   try {
     let query = `
@@ -116,11 +118,9 @@ app.get('/api/benefices', async (req, res) => {
           vente_items vi
       JOIN
           ventes v ON vi.vente_id = v.id
-      JOIN
-          factures f ON v.id = f.vente_id
       WHERE
           vi.statut_vente = 'actif'
-          AND f.statut_facture = 'payee_integralement'
+          AND v.statut_paiement = 'payee_integralement'
     `;
 
     const queryParams = [];
