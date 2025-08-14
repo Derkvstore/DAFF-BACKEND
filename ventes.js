@@ -364,12 +364,16 @@ router.post('/cancel-item', async (req, res) => {
         return res.status(404).json({ error: 'Article de vente non trouvé ou déjà annulé.' });
     }
 
-    if (!is_special_sale_item && produitId) {
+    // ================== CORRECTION ICI ==================
+    // On remet le produit en stock si c'est un produit standard (qui a un produit_id)
+    if (produitId) {
         await clientDb.query(
             'UPDATE products SET status = $1 WHERE id = $2 AND imei = $3',
             ['active', produitId, imei]
         );
     }
+    // ================== FIN DE LA CORRECTION ==================
+
 
     // Recalculer le montant total de la vente après annulation de l'article
     const recalculatedSaleTotalResult = await clientDb.query(
@@ -559,13 +563,15 @@ router.post('/return-item', async (req, res) => {
         return res.status(404).json({ error: 'Article de vente non trouvé ou déjà retourné.' });
     }
 
-    // Si ce n'est pas un article de facture spéciale, mettre à jour le statut du produit dans l'inventaire
-    if (!is_special_sale_item && produit_id) {
+    // ================== CORRECTION ICI ==================
+    // Si c'est un produit standard (qui a un produit_id), on met à jour son statut
+    if (produit_id) {
         await clientDb.query(
             'UPDATE products SET status = $1 WHERE id = $2 AND imei = $3',
             ['returned', produit_id, imei] // Nouveau statut 'returned'
         );
     }
+    // ================== FIN DE LA CORRECTION ==================
 
     // Enregistrer le retour dans la table 'returns'
     const clientResult = await clientDb.query('SELECT id FROM clients WHERE nom = $1', [client_nom]);
@@ -683,10 +689,10 @@ router.post('/mark-as-rendu', async (req, res) => {
     }
 
     // 2. Remettre le produit en 'active' dans la table products SANS toucher à la date_ajout
-    // Et incrémenter la quantité existante (quantite + 1)
+    // Et remettre la quantité à 1
     if (produit_id) {
       await clientDb.query(
-        'UPDATE products SET status = $1, quantite = quantite + 1 WHERE id = $2 AND imei = $3',
+        'UPDATE products SET status = $1, quantite = 1 WHERE id = $2 AND imei = $3',
         ['active', produit_id, imei]
       );
     }
@@ -949,10 +955,8 @@ router.get('/:id/pdf', async (req, res) => {
 <div class="invoice-container">
   <div class="header">
     <div class="header-logo-container">
-      <!-- 🔽 Place ton logo ici -->
-      <img src="LOGO_URL_HERE" alt="Logo" />
-      <h1 color = "red" >DAFF TELECOM </h1>
-      <p style="font-size: 11px; color: #666; margin-top: 6px;">Halle de Bamako<br/>Tél: 79 79 83 77</p>
+      <h1 color = "red" >VAN CHOCO </h1>
+      <p style="font-size: 11px; color: #666; margin-top: 6px;">Halle de Bamako<br/>Tél: 71 71 78 01</p>
     </div>
     <div class="header-info">
       <h2>Facture</h2>
