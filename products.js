@@ -10,21 +10,24 @@ const { Readable } = require('stream'); // Pour convertir le buffer en stream
 const upload = multer({ storage: multer.memoryStorage() });
 
 // Listes pour la validation côté backend (doivent correspondre au frontend)
-const MARQUES = ["iPhone", "Samsung", "iPad", "AirPod", "Google"];
+const MARQUES = ["iPhone", "Samsung", "iPad", "AirPod", "Google", "APPLE"];
 const MODELES = {
   iPhone: [
-    "X", "XR", "XS", "XS MAX", "11 SIMPLE", "11 PRO", "11 PRO MAX",
+    "SE 2022","X", "XR", "XS", "XS MAX", "11 SIMPLE", "11 PRO", "11 PRO MAX",
     "12 SIMPLE", "12 MINI", "12 PRO", "12 PRO MAX",
     "13 SIMPLE", "13 MINI", "13 PRO", "13 PRO MAX",
     "14 SIMPLE", "14 PLUS", "14 PRO", "14 PRO MAX",
     "15 SIMPLE", "15 PLUS", "15 PRO", "15 PRO MAX",
-    "16 SIMPLE", "16 PLUS", "16 PRO", "16 PRO MAX",
+    "16 SIMPLE", "16e","16 PLUS", "16 PRO", "16 PRO MAX",
      "17 SIMPLE", "17 AIR", "17 PRO", "17 PRO MAX",
   ],
-  Samsung: ["Galaxy S21", "Galaxy S22", "Galaxy A14", "Galaxy Note 20", "Galaxy A34", "Galaxy A56"],
+  Samsung: ["Galaxy S21", "Galaxy S22", "Galaxy A14", "Galaxy Note 20", "Galaxy A54", "Galaxy A36",],
   iPad: ["Air 10éme Gen", "Air 11éme Gen", "Pro", "Mini"],
-  AirPod: ["1ère Gen", "2ème Gen", "3ème Gen", "4ème Gen", "Pro 1ème Gen,", "2ème Gen",],
+  AirPod: ["1ère Gen", "2ème Gen", "3ème Gen", "4ème Gen", "Pro 1ème Gen,", "2ème Gen"],
+  Google: ["PIXEL 8 PRO"],
+  APPLE:["WATCH 09 41mm", "WATCH 10 41mm","WATCH 10 46mm","WATCH 11 41mm","WATCH 10 46mm" ]
 };
+const STOCKAGES = ["64 Go", "128 Go", "256 Go", "512 Go", "1 To" ,"2 To"];
 
 // Route pour récupérer tous les produits
 router.get('/', async (req, res) => {
@@ -192,6 +195,15 @@ router.post('/import', upload.single('file'), async (req, res) => {
   const productsToImport = [];
   const failedProducts = [];
   let rowNumber = 1; // Pour le suivi des lignes dans le fichier (commence à 1 pour les en-têtes)
+  let fournisseurs;
+
+  try {
+    const fournisseursRes = await pool.query('SELECT id, nom FROM fournisseurs');
+    fournisseurs = fournisseursRes.rows;
+  } catch (dbError) {
+    return res.status(500).json({ error: 'Erreur lors de la récupération des fournisseurs.' });
+  }
+
 
   try {
     // Déterminer le type de fichier et le parser en conséquence
@@ -262,8 +274,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
             currentError = `Marque '${marque}' non reconnue.`;
         } else if (MODELES[marque] && !MODELES[marque].includes(modele)) { // Validation du modèle
             currentError = `Modèle '${modele}' invalide pour la marque '${marque}'.`;
-        } else if (type === 'CARTON' && marque.toLowerCase() === 'iphone' && !['GW', 'ORG', 'ACTIVE', 'NO ACTIVE'].includes(type_carton)) {
-            currentError = 'Qualité de carton invalide pour iPhone CARTON (doit être GW, ORG, ACTIVE, NO ACTIVE).';
+        } else if (type === 'CARTON' && marque.toLowerCase() === 'iphone' && !['GW', 'ORG', 'ACTIVE', 'NO ACTIVE', 'ESIM ACTIVE', 'ESIM NO ACTIVE'].includes(type_carton)) {
+            currentError = 'Qualité de carton invalide pour iPhone CARTON (doit être GW, ORG, ACTIVE, NO ACTIVE, ESIM ACTIVE, ESIM NO ACTIVE).';
         } else if (type === 'ARRIVAGE' && marque.toLowerCase() === 'iphone' && !['SM', 'MSG'].includes(type_carton)) {
             currentError = 'Qualité d\'arrivage invalide pour iPhone ARRIVAGE (doit être SM ou MSG).';
         } else if (type !== 'CARTON' && type !== 'ARRIVAGE') {
@@ -273,7 +285,6 @@ router.post('/import', upload.single('file'), async (req, res) => {
         } else if (!fournisseurs.some(f => f.id === parseInt(fournisseur_id, 10))) {
             currentError = `Fournisseur ID '${fournisseur_id}' non trouvé.`;
         }
-
 
         if (currentError) {
           failedProducts.push({ row: _row, imei: imei, error: currentError });
@@ -340,7 +351,7 @@ router.put('/:id', async (req, res) => {
   const { id } = req.params;
   const {
     marque, modele, stockage, type, type_carton, imei,
-    prix_vente, prix_achat, quantite, fournisseur_id
+    prix_vente, prix_achat, quantite, fournisseur_id, update_all_same_products = false
   } = req.body;
 
   // Le statut sera toujours 'active' lors d'une modification pour le remettre en stock
@@ -366,36 +377,83 @@ router.put('/:id', async (req, res) => {
     return res.status(400).json({ error: 'La qualité d\'arrivage (SM/MSG) est requise pour les iPhones en arrivage.' });
   }
 
+  const client = await pool.connect();
 
   try {
-    const result = await pool.query(
-      `UPDATE products SET
-          marque = $1, modele = $2, stockage = $3, type = $4, type_carton = $5, imei = $6,
-          prix_vente = $7, prix_achat = $8, quantite = $9, status = $10, fournisseur_id = $11
-       WHERE id = $12 RETURNING *`,
-      [
-        marque, modele, stockage, type, type_carton || null, processedImei, // Utilise processedImei
-        prix_vente, prix_achat, quantite, status, fournisseur_id, // Utilise le statut 'active' ici
+    await client.query('BEGIN'); // Début de la transaction
+    let result;
+
+    if (update_all_same_products) {
+      // Étape 1: Récupérer les informations du produit original pour la correspondance
+      const originalProductQuery = `
+          SELECT marque, modele, stockage, type, type_carton
+          FROM products
+          WHERE id = $1
+      `;
+      const originalProductResult = await client.query(originalProductQuery, [id]);
+      if (originalProductResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Produit original non trouvé pour la mise à jour par lot.' });
+      }
+
+      const originalProduct = originalProductResult.rows[0];
+
+      // Étape 2: Mettre à jour tous les produits correspondants
+      const updateQuery = `
+        UPDATE products SET
+            prix_vente = $1, prix_achat = $2
+        WHERE
+            marque = $3 AND modele = $4 AND (stockage = $5 OR (stockage IS NULL AND $5 IS NULL)) AND type = $6 AND (type_carton = $7 OR (type_carton IS NULL AND $7 IS NULL))
+        RETURNING *
+      `;
+      // La quantité, l'IMEI et le fournisseur ne sont pas mis à jour ici
+      result = await client.query(updateQuery, [
+        prix_vente, prix_achat,
+        originalProduct.marque, originalProduct.modele, originalProduct.stockage, originalProduct.type, originalProduct.type_carton
+      ]);
+    } else {
+      // Mise à jour d'un seul produit
+      const updateQuery = `
+        UPDATE products SET
+            marque = $1, modele = $2, stockage = $3, type = $4, type_carton = $5, imei = $6,
+            prix_vente = $7, prix_achat = $8, quantite = $9, status = $10, fournisseur_id = $11
+         WHERE id = $12 RETURNING *
+      `;
+      result = await client.query(updateQuery, [
+        marque, modele, stockage, type, type_carton || null, processedImei,
+        prix_vente, prix_achat, quantite, status, fournisseur_id,
         id
-      ]
-    );
+      ]);
+    }
+
+    await client.query('COMMIT'); // Confirmer la transaction
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Produit non trouvé.' });
     }
-    res.status(200).json(result.rows[0]);
+
+    const message = update_all_same_products
+      ? `Les prix de vente et d'achat de ${result.rows.length} produits similaires ont été mis à jour avec succès.`
+      : 'Produit mis à jour avec succès.';
+
+    res.status(200).json({ message, updatedProducts: result.rows });
+
   } catch (error) {
+    await client.query('ROLLBACK'); // Annuler la transaction en cas d'erreur
     console.error('Erreur lors de la mise à jour du produit:', error);
-    if (error.code === '23505') { // Violation de contrainte unique
-      return res.status(409).json({ error: 'Un autre produit avec cette combinaison Marque, Modèle, Stockage, Type, Qualité Carton et IMEI existe déjà.' });
-    } else if (error.code === '23503') { // Violation de clé étrangère
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'Un autre produit avec cette combinaison de clés uniques existe déjà.' });
+    } else if (error.code === '23503') {
       return res.status(400).json({ error: 'Fournisseur non trouvé ou invalide.' });
-    } else if (error.code === '23514') { // Violation de contrainte de vérification (check constraint)
+    } else if (error.code === '23514') {
       return res.status(400).json({ error: `Violation de contrainte de base de données: ${error.constraint}` });
     }
     res.status(500).json({ error: 'Erreur serveur lors de la mise à jour du produit.' });
+  } finally {
+    client.release();
   }
 });
+
 
 // Route pour supprimer un produit
 router.delete('/:id', async (req, res) => {
