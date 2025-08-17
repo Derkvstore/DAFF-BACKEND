@@ -170,7 +170,7 @@ router.get('/:id', async (req, res) => {
                         'nom_fournisseur', fo.nom
                     )
                     ORDER BY vi.id
-                ) AS articles_vendus
+                ) FILTER (WHERE vi.statut_vente = 'actif') AS articles_vendus
             FROM
                 factures f
             JOIN
