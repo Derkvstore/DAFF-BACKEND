@@ -193,24 +193,22 @@ router.get('/dashboard-stats', async (req, res) => {
     const returnedTodayArrivage = parseInt(returnedTodayArrivageResult.rows[0].count, 10);
 
     // Pièces rendues aujourd'hui (Carton)
-    const renduTodayCartonResult = await client.query(
-      `SELECT COALESCE(SUM(vi.quantite_vendue), 0) AS count
-       FROM vente_items vi
-       JOIN ventes v ON vi.vente_id = v.id
-       JOIN products p ON vi.produit_id = p.id
-       WHERE p.type = 'CARTON' AND v.date_vente::date = CURRENT_DATE AND vi.statut_vente = 'rendu';`
-    );
-    const renduTodayCarton = parseInt(renduTodayCartonResult.rows[0].count, 10);
+const renduTodayCartonResult = await client.query(
+  `SELECT COALESCE(SUM(vi.quantite_vendue), 0) AS count
+   FROM vente_items vi
+   JOIN products p ON vi.produit_id = p.id
+   WHERE p.type = 'CARTON' AND vi.rendu_date::date = CURRENT_DATE AND vi.statut_vente = 'rendu';`
+);
+const renduTodayCarton = parseInt(renduTodayCartonResult.rows[0].count, 10);
 
-    // Pièces rendues aujourd'hui (Arrivage)
-    const renduTodayArrivageResult = await client.query(
-      `SELECT COALESCE(SUM(vi.quantite_vendue), 0) AS count
-       FROM vente_items vi
-       JOIN ventes v ON vi.vente_id = v.id
-       JOIN products p ON vi.produit_id = p.id
-       WHERE p.type = 'ARRIVAGE' AND v.date_vente::date = CURRENT_DATE AND vi.statut_vente = 'rendu';`
-    );
-    const renduTodayArrivage = parseInt(renduTodayArrivageResult.rows[0].count, 10);
+// Pièces rendues aujourd'hui (Arrivage)
+const renduTodayArrivageResult = await client.query(
+  `SELECT COALESCE(SUM(vi.quantite_vendue), 0) AS count
+   FROM vente_items vi
+   JOIN products p ON vi.produit_id = p.id
+   WHERE p.type = 'ARRIVAGE' AND vi.rendu_date::date = CURRENT_DATE AND vi.statut_vente = 'rendu';`
+);
+const renduTodayArrivage = parseInt(renduTodayArrivageResult.rows[0].count, 10);
 
     // Calcul du stock d'hier (approximation)
     const yesterdayStockCarton = totalCartons + soldTodayCarton - addedTodayCarton + returnedTodayCarton + renduTodayCarton;
