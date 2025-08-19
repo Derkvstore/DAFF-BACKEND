@@ -1038,39 +1038,39 @@ router.get('/consolidated-invoice/:clientName/pdf', async (req, res) => {
 
         const consolidatedQuery = `
             SELECT
-                c.nom AS client_nom,
-                c.telephone AS client_telephone,
-                JSON_AGG(
-                    JSON_BUILD_OBJECT(
-                        'vente_id', v.id,
-                        'date_vente', v.date_vente,
-                        'item_id', vi.id,
-                        'produit_id', vi.produit_id,
-                        'imei', vi.imei,
-                        'quantite_vendue', vi.quantite_vendue,
-                        'prix_unitaire_vente', vi.prix_unitaire_vente,
-                        'prix_unitaire_achat', vi.prix_unitaire_achat,
-                        'marque', vi.marque,
-                        'modele', vi.modele,
-                        'stockage', vi.stockage,
-                        'type_carton', vi.type_carton,
-                        'type', vi.type,
-                        'statut_vente', vi.statut_vente,
-                        'montant_total_vente', v.montant_total,
-                        'montant_paye_vente', v.montant_paye
-                    )
-                    ORDER BY v.date_vente DESC
-                ) AS articles
-            FROM
-                clients c
-            JOIN
-                ventes v ON c.id = v.client_id
-            JOIN
-                vente_items vi ON v.id = vi.vente_id
-            WHERE
-                c.nom ILIKE $1 AND vi.statut_vente = 'actif'
-            GROUP BY
-                c.nom, c.telephone;
+    c.nom AS client_nom,
+    c.telephone AS client_telephone,
+    JSON_AGG(
+        JSON_BUILD_OBJECT(
+            'vente_id', v.id,
+            'date_vente', v.date_vente,
+            'item_id', vi.id,
+            'produit_id', vi.produit_id,
+            'imei', vi.imei,
+            'quantite_vendue', vi.quantite_vendue,
+            'prix_unitaire_vente', vi.prix_unitaire_vente,
+            'prix_unitaire_achat', vi.prix_unitaire_achat,
+            'marque', vi.marque,
+            'modele', vi.modele,
+            'stockage', vi.stockage,
+            'type_carton', vi.type_carton,
+            'type', vi.type,
+            'statut_vente', vi.statut_vente,
+            'montant_total_vente', v.montant_total,
+            'montant_paye_vente', v.montant_paye
+        )
+        ORDER BY v.date_vente DESC
+    ) AS articles
+FROM
+    clients c
+JOIN
+    ventes v ON c.id = v.client_id
+JOIN
+    vente_items vi ON v.id = vi.vente_id
+WHERE
+    c.nom ILIKE $1 AND vi.statut_vente NOT IN ('vendu', 'annulé', 'rendu')
+GROUP BY
+    c.nom, c.telephone;
         `;
         const result = await clientDb.query(consolidatedQuery, [`%${clientName}%`]);
 
