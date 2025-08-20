@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { pool } = require('./db'); // Assurez-vous que le chemin vers db est correct
+const { pool } = require('./db');
 
-// Route pour récupérer toutes les commandes spéciales avec les noms et numéros du client et du fournisseur
 router.get('/', async (req, res) => {
   try {
     const query = `
@@ -44,7 +43,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Route pour créer une nouvelle commande spéciale
 router.post('/', async (req, res) => {
   const {
     client_nom,
@@ -66,7 +64,6 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Des informations obligatoires sont manquantes pour la commande spéciale.' });
   }
 
-  // Validation des prix
   const parsedPrixVenteClient = parseFloat(prix_vente_client);
   const parsedPrixAchatFournisseur = parseFloat(prix_achat_fournisseur);
   if (parsedPrixVenteClient <= parsedPrixAchatFournisseur) {
@@ -125,7 +122,6 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Route pour mettre à jour une commande spéciale existante
 router.put('/:id', async (req, res) => {
   const orderId = req.params.id;
   const {
@@ -139,9 +135,9 @@ router.put('/:id', async (req, res) => {
     imei,
     prix_achat_fournisseur,
     prix_vente_client,
-    montant_paye, // Ajout de montant_paye pour la mise à jour complète
-    statut, // Ajout du statut pour la mise à jour complète
-    raison_annulation // Ajout de la raison d'annulation
+    montant_paye,
+    statut,
+    raison_annulation
   } = req.body;
 
   let clientDb;
@@ -150,7 +146,6 @@ router.put('/:id', async (req, res) => {
     clientDb = await pool.connect();
     await clientDb.query('BEGIN');
 
-    // Récupération des IDs du client et du fournisseur
     const clientResult = await clientDb.query('SELECT id FROM clients WHERE nom = $1', [client_nom]);
     if (clientResult.rows.length === 0) {
       await clientDb.query('ROLLBACK');
@@ -169,7 +164,6 @@ router.put('/:id', async (req, res) => {
     const parsedPrixAchatFournisseur = parseFloat(prix_achat_fournisseur);
     const parsedMontantPaye = parseFloat(montant_paye);
     
-    // Validation des prix
     if (parsedPrixVenteClient <= parsedPrixAchatFournisseur) {
       await clientDb.query('ROLLBACK');
       return res.status(400).json({ error: 'Le prix de vente doit être supérieur au prix d\'achat.' });
@@ -177,25 +171,15 @@ router.put('/:id', async (req, res) => {
 
     const montantRestant = parsedPrixVenteClient - parsedMontantPaye;
     
-    // Déterminer le statut
-    let newStatut = statut;
-    if (montantRestant <= 0) {
-      newStatut = 'vendu';
-    } else if (parsedMontantPaye > 0) {
-      newStatut = 'paiement_partiel';
-    } else {
-      newStatut = 'en_attente';
-    }
-
     const updateQuery = `
       UPDATE special_orders
       SET client_id = $1, fournisseur_id = $2, marque = $3, modele = $4, stockage = $5, type = $6, type_carton = $7, imei = $8,
-          prix_achat_fournisseur = $9, prix_vente_client = $10, montant_paye = $11, montant_restant = $12, statut = $13, raison_annulation = $14, date_statut_change = NOW()
+          prix_achat_fournisseur = $9, prix_vente_client = $10, montant_paye = $11, montant_restant = $12, statut = $13, raison_annulation = $14
       WHERE id = $15 RETURNING *;
     `;
     const result = await clientDb.query(updateQuery, [
         clientId, fournisseurId, marque, modele, stockage, type, type_carton, imei,
-        parsedPrixAchatFournisseur, parsedPrixVenteClient, parsedMontantPaye, montantRestant, newStatut, raison_annulation || null, orderId
+        parsedPrixAchatFournisseur, parsedPrixVenteClient, parsedMontantPaye, montantRestant, statut, raison_annulation || null, orderId
     ]);
 
     if (result.rows.length === 0) {
@@ -215,9 +199,6 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// Route pour mettre à jour le statut d'une commande spéciale
-// Cette route peut maintenant être remplacée par la route PUT /:id plus complète.
-// Je la conserve ici pour l'exemple, mais vous pouvez la supprimer si vous fusionnez la logique.
 router.put('/:id/update-status', async (req, res) => {
   const orderId = req.params.id;
   const { statut, raison_annulation } = req.body;
@@ -255,7 +236,6 @@ router.put('/:id/update-status', async (req, res) => {
   }
 });
 
-// Route pour mettre à jour le paiement d'une commande spéciale
 router.put('/:id/update-payment', async (req, res) => {
   const orderId = req.params.id;
   const { new_montant_paye } = req.body;
@@ -318,7 +298,6 @@ router.put('/:id/update-payment', async (req, res) => {
     }
 });
 
-// Route pour supprimer une commande spéciale
 router.delete('/:id', async (req, res) => {
     const orderId = req.params.id;
     let clientDb;
