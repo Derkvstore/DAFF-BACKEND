@@ -10,7 +10,7 @@ const { Readable } = require('stream'); // Pour convertir le buffer en stream
 const upload = multer({ storage: multer.memoryStorage() });
 
 // Listes pour la validation côté backend (doivent correspondre au frontend)
-const MARQUES = ["iPhone", "Samsung", "iPad", "AirPod", "Google", "APPLE"];
+const MARQUES = ["iPhone", "Samsung", "iPad", "AirPod", "Google", "APPLE", "Mac"];
 const MODELES = {
   iPhone: [
     "SE 2022","X", "XR", "XS", "XS MAX", "11 SIMPLE", "11 PRO", "11 PRO MAX",
@@ -25,9 +25,10 @@ const MODELES = {
   iPad: ["Air 10éme Gen", "Air 11éme Gen", "Pro", "Mini"],
   AirPod: ["1ère Gen", "2ème Gen", "3ème Gen", "4ème Gen", "Pro 1ème Gen,", "2ème Gen"],
   Google: ["PIXEL 8 PRO"],
-  APPLE:["WATCH 09 41mm", "WATCH 10 41mm","WATCH 10 46mm","WATCH 11 41mm","WATCH 10 46mm" ]
+  APPLE:["WATCH 09 41mm", "WATCH 10 41mm","WATCH 10 46mm","WATCH 11 41mm","WATCH 10 46mm" ],
+  Mac: ["Air M1 13 2020","Air M1 15 2020","Air M2 13 2020", "Air 15 M2 2020","Air M2 2020","Air M1 2020","Air M1 2020","Air M1 2020","Air M1 2020","Pro", ]
 };
-const STOCKAGES = ["64 Go", "128 Go", "256 Go", "512 Go", "1 To" ,"2 To"];
+const STOCKAGES = ["64 Go", "128 Go", "256 Go", "512 Go", "1 To" ,"2 To", "Slim", "Digital", "Pro", "Standard",];
 
 // Route pour récupérer tous les produits
 router.get('/', async (req, res) => {
